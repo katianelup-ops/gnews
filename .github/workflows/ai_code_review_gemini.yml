@@ -39,7 +39,8 @@ jobs:
 
           PROMPT=$(cat <<'EOF'
 Você é um revisor de código focado em segurança.
-Analise APENAS o diff abaixo e identifique vulnerabilidades reais (principalmente SQL Injection, XSS, Command Injection, SSRF, Hardcoded secrets).
+Analise APENAS o diff abaixo e identifique vulnerabilidades reais (principalmente SQL Injection, XSS, Command Injection, SSRF, 
+Hardcoded secrets).
 Se encontrar algo, explique:
 1) Onde está (arquivo/trecho)
 2) Por que é vulnerabilidade
@@ -49,7 +50,8 @@ Se não encontrar, diga "Nenhuma vulnerabilidade clara encontrada no diff".
 
 DIFF:
 EOF
-)
+          )
+
 
           # Monta JSON para Gemini
           BODY="$(jq -n --arg p "$PROMPT" --arg d "$DIFF_TRUNC" '{
