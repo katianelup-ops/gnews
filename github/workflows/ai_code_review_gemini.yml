@@ -1,0 +1,87 @@
+name: AI Code Review (Gemini)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  gemini_review:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Get PR diff and ask Gemini for security review
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+
+          echo "Fetching diff for PR #$PR_NUMBER ..."
+          DIFF="$(curl -sS -L \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3.diff" \
+            "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER")"
+
+          # Limita o tamanho para não estourar contexto da API
+          DIFF_TRUNC="$(echo "$DIFF" | head -c 12000)"
+
+          PROMPT=$(cat <<'EOF'
+Você é um revisor de código focado em segurança.
+Analise APENAS o diff abaixo e identifique vulnerabilidades reais (principalmente SQL Injection, XSS, Command Injection, SSRF, Hardcoded secrets).
+Se encontrar algo, explique:
+1) Onde está (arquivo/trecho)
+2) Por que é vulnerabilidade
+3) Como explorar (em alto nível)
+4) Como corrigir (com exemplo de código seguro)
+Se não encontrar, diga "Nenhuma vulnerabilidade clara encontrada no diff".
+
+DIFF:
+EOF
+)
+
+          # Monta JSON para Gemini
+          BODY="$(jq -n --arg p "$PROMPT" --arg d "$DIFF_TRUNC" '{
+            contents: [
+              { role: "user", parts: [ { text: ($p + "\n" + $d) } ] }
+            ],
+            generationConfig: {
+              temperature: 0.2,
+              maxOutputTokens: 700
+            }
+          }')"
+
+          echo "Calling Gemini..."
+          RESP="$(curl -sS -X POST \
+            -H "Content-Type: application/json" \
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}" \
+            -d "$BODY")"
+
+          TEXT="$(echo "$RESP" | jq -r '.candidates[0].content.parts[0].text // empty')"
+
+          if [ -z "$TEXT" ]; then
+            echo "Gemini returned empty response. Full response:"
+            echo "$RESP"
+            exit 1
+          fi
+
+          echo "Posting comment to PR..."
+          # Posta comentário no PR
+          curl -sS -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments" \
+            -d "$(jq -n --arg body "🤖 **Gemini AI Code Review (Segurança)**\n\n$TEXT" '{body:$body}')"
+
+          echo "Done."
