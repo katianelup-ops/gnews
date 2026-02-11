@@ -24,3 +24,4 @@ public class VulnerableUserSearch {
         return rs.next() ? "FOUND" : "NOT_FOUND";
     }
 }
+// trigger workflow again
