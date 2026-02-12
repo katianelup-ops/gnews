@@ -1,4 +1,4 @@
-name: AI Code Review (Gemini)
+name: Gemini AI Code Reviewer
 
 on:
   pull_request:
@@ -19,14 +19,14 @@ jobs:
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Get PR diff and ask Gemini for security review
+      - name: Review PR diff with Gemini and comment on PR
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
-          set -e
+          set -euo pipefail
 
           echo "Fetching diff for PR #$PR_NUMBER ..."
           DIFF="$(curl -sS -L \
@@ -34,34 +34,25 @@ jobs:
             -H "Accept: application/vnd.github.v3.diff" \
             "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER")"
 
-          # Limita o tamanho para não estourar contexto da API
+          # Limita tamanho
           DIFF_TRUNC="$(echo "$DIFF" | head -c 12000)"
 
-          PROMPT=$(cat <<'EOF'
-Você é um revisor de código focado em segurança.
-Analise APENAS o diff abaixo e identifique vulnerabilidades reais (principalmente SQL Injection, XSS, Command Injection, SSRF, 
-Hardcoded secrets).
+          PROMPT="Você é um revisor de código focado em segurança.
+Analise APENAS o diff abaixo e identifique vulnerabilidades reais (principalmente SQL Injection, XSS, Command Injection, SSRF, Hardcoded secrets).
 Se encontrar algo, explique:
 1) Onde está (arquivo/trecho)
 2) Por que é vulnerabilidade
 3) Como explorar (em alto nível)
 4) Como corrigir (com exemplo de código seguro)
-Se não encontrar, diga "Nenhuma vulnerabilidade clara encontrada no diff".
+Se não encontrar, diga: Nenhuma vulnerabilidade clara encontrada no diff.
 
-DIFF:
-EOF
-          )
+DIFF:"
 
-
-          # Monta JSON para Gemini
           BODY="$(jq -n --arg p "$PROMPT" --arg d "$DIFF_TRUNC" '{
             contents: [
               { role: "user", parts: [ { text: ($p + "\n" + $d) } ] }
             ],
-            generationConfig: {
-              temperature: 0.2,
-              maxOutputTokens: 700
-            }
+            generationConfig: { temperature: 0.2, maxOutputTokens: 700 }
           }')"
 
           echo "Calling Gemini..."
@@ -79,7 +70,6 @@ EOF
           fi
 
           echo "Posting comment to PR..."
-          # Posta comentário no PR
           curl -sS -X POST \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
             -H "Accept: application/vnd.github+json" \
