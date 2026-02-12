@@ -1,0 +1,12 @@
+Trabalho: AI Code Reviewer com Gemini
+
+Foi criada uma vulnerabilidade real de SQL Injection em código Java.
+Foi implementado um workflow no GitHub Actions acionado por Pull Request.
+O workflow captura o diff da PR, envia para a API do Gemini e publica automaticamente o resultado como comentário no PR.
+Foi utilizado secret (GEMINI_API_KEY) para proteger a chave da API.
+
+O script de automação foi implementado com sucesso e a comunicação com a API do Gemini foi estabelecida (conforme os logs de erro 429/Quota Exceeded). 
+No entanto, devido às restrições temporárias de cota do Tier Gratuito para os modelos Gemini 2.0/2.5 na região, a resposta final da análise de código foi limitada pelo provedor."
+
+Link do PR:
+https://github.com/katianelup-ops/gnews/tree/PR-de-uma-vulnerabilidade
