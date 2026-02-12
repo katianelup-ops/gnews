@@ -39,7 +39,7 @@ jobs:
           # 3. Chamada para a API
           RESP=$(curl -sS -X POST \
             -H "Content-Type: application/json" \
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$GEMINI_API_KEY" \
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=$GEMINI_API_KEY" \
             -d "$BODY")
 
           # 4. Extrai texto
