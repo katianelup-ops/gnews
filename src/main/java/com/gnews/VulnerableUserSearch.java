@@ -10,7 +10,6 @@ import java.sql.Statement;
  * SQL Injection por concatenação de string.
  */
 public class VulnerableUserSearch {
-
     public static String findUserByName(String name) throws Exception {
         // Banco em memória só para exemplo (não precisa rodar de verdade pro review pegar)
         Connection conn = DriverManager.getConnection("jdbc:h2:mem:testdb", "sa", "");
@@ -24,5 +23,3 @@ public class VulnerableUserSearch {
         return rs.next() ? "FOUND" : "NOT_FOUND";
     }
 }
-// trigger workflow again
-// trigger gemini
