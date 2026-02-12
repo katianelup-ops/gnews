@@ -1,16 +1,20 @@
 name: Gemini AI Code Reviewer
+
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+
 permissions:
   contents: read
   pull-requests: write
+
 jobs:
   gemini_review:
     runs-on: ubuntu-latest
     steps:
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
+
       - name: Comment on PR using Gemini
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -19,42 +23,38 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          DIFF="$(curl -sS -L \
+
+          # 1. Pega o DIFF
+          DIFF=$(curl -sS -L \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
             -H "Accept: application/vnd.github.v3.diff" \
-            "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER")"
-          BODY="$(jq -n --arg d "$(echo "$DIFF" | head -c 12000)" '{
+            "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER")
+
+          # 2. Monta o JSON para o Gemini
+          BODY=$(jq -n --arg d "$(echo "$DIFF" | head -c 12000)" '{
             contents: [{role:"user", parts:[{text:("Analise o diff e aponte vulnerabilidades reais (SQLi, XSS, etc). Diff:\n" + $d)}]}],
             generationConfig:{temperature:0.2,maxOutputTokens:500}
-          }')"
-          RESP="$(curl -sS -X POST \
+          }')
+
+          # 3. Chamada para a API
+          RESP=$(curl -sS -X POST \
             -H "Content-Type: application/json" \
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}"\
-            -d "$BODY")"
-                    # Extrai texto de forma robusta (pega todos os parts.text)
-          TEXT="$(echo "$RESP" | jq -r '
-            (
-              .candidates[0].content.parts // []
-            )
-            | map(.text // empty)
-            | join("\n")
-          ')"
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$GEMINI_API_KEY" \
+            -d "$BODY")
 
-          # Fallbacks: se vier vazio, tenta pegar motivos/erros
+          # 4. Extrai texto
+          TEXT=$(echo "$RESP" | jq -r '(.candidates[0].content.parts // []) | map(.text // empty) | join("\n")')
+
+          # 5. Fallback se vier vazio
           if [ -z "${TEXT// }" ]; then
-            BLOCK_REASON="$(echo "$RESP" | jq -r '.promptFeedback.blockReason // empty')"
-            FINISH_REASON="$(echo "$RESP" | jq -r '.candidates[0].finishReason // empty')"
-            ERR_MSG="$(echo "$RESP" | jq -r '.error.message // empty')"
+            BLOCK_REASON=$(echo "$RESP" | jq -r '.promptFeedback.blockReason // empty')
+            FINISH_REASON=$(echo "$RESP" | jq -r '.candidates[0].finishReason // empty')
+            ERR_MSG=$(echo "$RESP" | jq -r '.error.message // empty')
 
-            TEXT="(Resposta vazia do Gemini)
-            blockReason=${BLOCK_REASON}
-            finishReason=${FINISH_REASON}
-            error=${ERR_MSG}
+            TEXT="(Resposta vazia do Gemini)\nblockReason=${BLOCK_REASON}\nfinishReason=${FINISH_REASON}\nerror=${ERR_MSG}"
+          fi
 
-            Resposta bruta (truncada):
-            $(echo "$RESP" | head -c 1500)"
-            fi
-
+          # 6. Posta o comentário
           curl -sS -X POST \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
             -H "Accept: application/vnd.github+json" \
