@@ -31,7 +31,30 @@ jobs:
             -H "Content-Type: application/json" \
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}" \
             -d "$BODY")"
-          TEXT="$(echo "$RESP" | jq -r '.candidates[0].content.parts[0].text // empty')"
+                    # Extrai texto de forma robusta (pega todos os parts.text)
+          TEXT="$(echo "$RESP" | jq -r '
+            (
+              .candidates[0].content.parts // []
+            )
+            | map(.text // empty)
+            | join("\n")
+          ')"
+
+          # Fallbacks: se vier vazio, tenta pegar motivos/erros
+          if [ -z "${TEXT// }" ]; then
+            BLOCK_REASON="$(echo "$RESP" | jq -r '.promptFeedback.blockReason // empty')"
+            FINISH_REASON="$(echo "$RESP" | jq -r '.candidates[0].finishReason // empty')"
+            ERR_MSG="$(echo "$RESP" | jq -r '.error.message // empty')"
+
+            TEXT="(Resposta vazia do Gemini)
+            blockReason=${BLOCK_REASON}
+            finishReason=${FINISH_REASON}
+            error=${ERR_MSG}
+
+            Resposta bruta (truncada):
+            $(echo "$RESP" | head -c 1500)"
+            fi
+
           curl -sS -X POST \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
             -H "Accept: application/vnd.github+json" \
